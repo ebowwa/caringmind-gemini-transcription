@@ -1,0 +1,7 @@
+this is a swift 6, ios 18, python fastapi, bash project
+
+for the client swift app: 
+- generate the project.yml with a bash script
+- use a .env file to store the secrets and have the bash script use this when generating the project.yml
+- have the project.yml in the client swift app generate the info.plist and others
+
