@@ -122,17 +122,18 @@ generation_config = {
     "response_mime_type": "application/json",
 }
 
-@router.post("/upload", response_model=UploadResponse)
+@router.post("/upload", response_model=TranscriptionResponse)  # Changed response model
 async def upload_audio(request: AudioRequest):
-    """Handle file upload and optional analysis"""
+    """Handle file upload and analysis"""
     try:
-        # Single validation during upload
         file_id, size, is_valid, speech_ratio = await AudioUploadService.process_upload(request.audio_base64)
-        logger.info(f"Upload processed - valid: {is_valid}, speech: {speech_ratio:.2f}")
-
-        # Return early if audio is invalid
+        
         if not is_valid:
-            return UploadResponse(file_id=None, size=size, is_valid=False)
+            # Return empty but valid response structure for invalid audio
+            return TranscriptionResponse(
+                full_audio_transcribed=False,
+                conversation_analysis=[]
+            )
 
         # Only analyze valid audio
         file_path = AudioUploadService.get_audio_path(file_id)
@@ -184,28 +185,15 @@ async def upload_audio(request: AudioRequest):
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0].strip()
             
-            # Parse and validate response
-            response_data = json.loads(response_text)
-            analysis = TranscriptionResponse(**response_data)  # Validate against our model
-            
-            # Return complete response
-            result = UploadResponse(
-                file_id=file_id,
-                size=size,
-                is_valid=True,
-                analysis=analysis
-            )
-            logger.info(f"Returning analysis with {len(analysis.conversation_analysis)} turns")
-            return result
+            # Return raw response to match client expectations
+            return json.loads(response_text)
 
         except Exception as e:
             logger.error(f"Analysis error: {str(e)}", exc_info=True)
-            # Return upload success but no analysis
-            return UploadResponse(
-                file_id=file_id,
-                size=size,
-                is_valid=True,
-                analysis=None
+            # Return empty response for failed analysis
+            return TranscriptionResponse(
+                full_audio_transcribed=False,
+                conversation_analysis=[]
             )
 
     except Exception as e:
