@@ -57,8 +57,11 @@ class TranscriptionConfig(GeminiConfig):
     temperature: float = 0.7  # Lower temperature for more focused responses
     model_name: str = "gemini-1.5-flash"
     
-    @property
-    def response_schema(self) -> content.Schema:
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._response_schema = self._create_schema()
+        
+    def _create_schema(self) -> content.Schema:
         """Generate the transcription schema"""
         return content.Schema(
             type=content.Type.OBJECT,
@@ -117,6 +120,11 @@ class TranscriptionConfig(GeminiConfig):
                 )
             }
         )
+
+    @property
+    def response_schema(self) -> content.Schema:
+        """Get the response schema"""
+        return self._response_schema
 
 class GeminiService:
     """
