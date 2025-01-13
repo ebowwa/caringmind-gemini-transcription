@@ -175,6 +175,7 @@ class GeminiService:
                             content_data: Union[str, bytes],
                             prompt: str,
                             response_model: Optional[Type[BaseModel]] = None,
+                            schema: Optional[content.Schema] = None,
                             mime_type: str = "audio/wav") -> Union[Dict[str, Any], BaseModel]:
         """
         Generic content analysis method supporting various content types
@@ -183,12 +184,18 @@ class GeminiService:
             content_data: Raw content as base64 string or bytes
             prompt: Analysis prompt
             response_model: Optional Pydantic model for response validation
+            schema: Optional response schema for Gemini model
             mime_type: Content MIME type
             
         Returns:
             Analysis results as dict or specified response model
         """
         try:
+            # Override schema in config if provided
+            if schema:
+                original_schema = self.config.response_schema
+                self.config.response_schema = schema
+
             model = genai.GenerativeModel(
                 model_name=self.config.model_name,
                 generation_config=self._create_generation_config()
@@ -242,6 +249,10 @@ class GeminiService:
         except Exception as e:
             logger.error(f"Content analysis error: {e}", exc_info=True)
             raise ValueError(f"Analysis failed: {str(e)}")
+        finally:
+            # Restore original schema if we overrode it
+            if schema and 'original_schema' in locals():
+                self.config.response_schema = original_schema
 
     @classmethod
     def create_transcription_service(cls) -> 'GeminiService':
