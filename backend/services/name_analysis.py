@@ -103,24 +103,42 @@ class NameAnalysisService:
 
             analysis_prompt = """
             # Analysis Request
-            Please analyze this name recording focusing on:
+            Analyze this name recording and return a JSON response with EXACTLY the following structure:
+            {
+                "name": "transcribed full name",
+                "prosody": "detailed speech pattern analysis",
+                "feeling": "emotional tone analysis",
+                "confidence_score": integer between 0-100,
+                "confidence_reasoning": "explanation of confidence score",
+                "psychoanalysis": "psychological insights from voice",
+                "location_background": "environmental context details",
+                "voice_characteristics": {
+                    "pattern": "distinctive voice features",
+                    "style": "speaking style description",
+                    "common_phrases": ["phrase1", "phrase2"]
+                }
+            }
+
+            Focus your analysis on:
             1. Exact name transcription (00:00-end)
             2. Voice characteristics and patterns
-            3. Emotional state and confidence
-            4. Environmental context
+            3. Emotional state and confidence level
+            4. Environmental context and background
             5. Speaking style and mannerisms
+
+            IMPORTANT: Return ONLY the JSON object with ALL fields exactly as specified.
             """
 
             # Use the generic analyze_content method with audio mime type
             result = await self.gemini_service.analyze_content(
                 content_data=audio_data,
                 prompt=analysis_prompt,
-                response_model=NameAnalysis,
+                schema=self._create_name_analysis_schema(),
                 mime_type=self.SUPPORTED_MIME_TYPES[mime_type]
             )
 
             # Create NameAnalysis object for validation
-            return result
+            return NameAnalysis(**result)
 
         except Exception as e:
             logger.error(f"Name analysis error: {e}", exc_info=True)
