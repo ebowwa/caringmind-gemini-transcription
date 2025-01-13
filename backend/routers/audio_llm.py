@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from services.audio_upload import AudioUploadService
 from services.audio_validation import AudioValidator  # Add this import
-from services.gemini_service import GeminiService
+from services.gemini_service import GeminiService, GeminiConfig
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 
@@ -158,7 +158,16 @@ async def upload_audio(request: AudioRequest):
         with open(file_path, "rb") as f:
             audio_data = f.read()
 
-        gemini_service = GeminiService()
+        # Use custom configuration for transcription
+        config = GeminiConfig(
+            temperature=0.7,  # Lower temperature for more focused responses
+            top_p=0.95,
+            top_k=40,
+            max_output_tokens=8192,
+            model_name="gemini-1.5-flash"
+        )
+        
+        gemini_service = GeminiService(config=config)
         transcription_prompt = """
         Please transcribe and analyze this audio clip. For each speaker turn:
         1. Identify the speaker
