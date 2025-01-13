@@ -58,8 +58,8 @@ class TranscriptionConfig(GeminiConfig):
     model_name: str = "gemini-1.5-flash"
     
     def __init__(self, **data):
+        data['response_schema'] = self._create_schema()
         super().__init__(**data)
-        self._response_schema = self._create_schema()
         
     def _create_schema(self) -> content.Schema:
         """Generate the transcription schema"""
@@ -121,11 +121,6 @@ class TranscriptionConfig(GeminiConfig):
             }
         )
 
-    @property
-    def response_schema(self) -> content.Schema:
-        """Get the response schema"""
-        return self._response_schema
-
 class GeminiService:
     """
     Abstract interface for Gemini API interactions.
@@ -153,8 +148,14 @@ class GeminiService:
             "max_output_tokens": self.config.max_output_tokens,
             "response_mime_type": self.config.response_mime_type,
         }
-        if self.config.response_schema:
-            config["response_schema"] = self.config.response_schema
+        
+        # Get the actual schema object if it's a property
+        if hasattr(self.config, 'response_schema'):
+            schema = self.config.response_schema
+            if isinstance(schema, property):
+                schema = schema.fget(self.config)
+            config["response_schema"] = schema
+            
         return config
 
     def _ensure_base64(self, data: Union[str, bytes]) -> str:
