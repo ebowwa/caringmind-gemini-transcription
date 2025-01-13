@@ -158,16 +158,9 @@ async def upload_audio(request: AudioRequest):
         with open(file_path, "rb") as f:
             audio_data = f.read()
 
-        # Use custom configuration for transcription
-        config = GeminiConfig(
-            temperature=0.7,  # Lower temperature for more focused responses
-            top_p=0.95,
-            top_k=40,
-            max_output_tokens=8192,
-            model_name="gemini-1.5-flash"
-        )
+        # Create a transcription-specific service instance
+        gemini_service = GeminiService.create_transcription_service()
         
-        gemini_service = GeminiService(config=config)
         transcription_prompt = """
         Please transcribe and analyze this audio clip. For each speaker turn:
         1. Identify the speaker
@@ -182,8 +175,7 @@ async def upload_audio(request: AudioRequest):
 
         return await gemini_service.analyze_audio(
             audio_data=audio_data,
-            prompt=transcription_prompt,
-            schema=create_transcription_schema()
+            prompt=transcription_prompt
         )
 
     except Exception as e:
