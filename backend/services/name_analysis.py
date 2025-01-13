@@ -115,12 +115,12 @@ class NameAnalysisService:
             result = await self.gemini_service.analyze_content(
                 content_data=audio_data,
                 prompt=analysis_prompt,
-                schema=self._create_name_analysis_schema(),
+                response_model=NameAnalysis,
                 mime_type=self.SUPPORTED_MIME_TYPES[mime_type]
             )
 
             # Create NameAnalysis object for validation
-            return NameAnalysis(**result)
+            return result
 
         except Exception as e:
             logger.error(f"Name analysis error: {e}", exc_info=True)
