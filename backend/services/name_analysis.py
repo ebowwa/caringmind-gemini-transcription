@@ -148,25 +148,30 @@ class NameAnalysisService:
 
             response = chat.send_message("Process the audio and think deeply")
             
-            # Parse the response text as JSON before creating NameAnalysis object
+            # Debug log the response
+            logger.debug(f"Raw Gemini response: {response}")
+            logger.debug(f"Response text: {response.text}")
+            logger.debug(f"Response type: {type(response)}")
+            
+            # Parse the response
             try:
-                import json
-                import re
-                
-                # Extract JSON from markdown code block if present
-                json_pattern = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
-                match = json_pattern.search(response.text)
-                if match:
-                    json_str = match.group(1)
-                    result = json.loads(json_str)
+                if hasattr(response, 'candidates') and response.candidates:
+                    result = response.candidates[0].content.parts[0].text
                 else:
-                    # Try parsing the entire response as JSON
-                    result = json.loads(response.text)
+                    result = response.text
+                
+                logger.debug(f"Parsed result: {result}")
+                
+                import json
+                # Try parsing as JSON
+                if isinstance(result, str):
+                    result = json.loads(result)
                 
                 return NameAnalysis(**result)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse Gemini response as JSON: {e}\nResponse text: {response.text}")
-                raise ValueError(f"Invalid response format from Gemini: {str(e)}")
+                
+            except Exception as e:
+                logger.error(f"Failed to parse response: {str(e)}\nResponse: {response}")
+                raise ValueError(f"Failed to parse Gemini response: {str(e)}")
 
         except Exception as e:
             logger.error(f"Name analysis error: {e}", exc_info=True)
