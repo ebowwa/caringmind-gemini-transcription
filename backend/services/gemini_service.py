@@ -1,5 +1,6 @@
 import os
 import logging
+import json
 from typing import Any, Dict, Optional, Union, List, Type
 import google.generativeai as genai
 from google.ai.generativelanguage_v1beta.types import content
@@ -206,9 +207,37 @@ class GeminiService:
             }])
 
             response = chat.send_message("Analyze this content")
-            result = response.text if isinstance(response.text, dict) else response.json()
             
-            return response_model(**result) if response_model else result
+            # Handle response parsing
+            try:
+                # First try to parse as JSON
+                result = json.loads(response.text)
+            except (json.JSONDecodeError, AttributeError):
+                # If not JSON, try to get the text directly
+                try:
+                    result = response.text
+                    if isinstance(result, str):
+                        # Try to parse string as JSON
+                        try:
+                            result = json.loads(result)
+                        except json.JSONDecodeError:
+                            # If not JSON, wrap in dict
+                            result = {"text": result}
+                except AttributeError:
+                    # If no text attribute, try candidates
+                    if hasattr(response, 'candidates') and response.candidates:
+                        result = response.candidates[0].content.parts[0].text
+                        try:
+                            result = json.loads(result)
+                        except json.JSONDecodeError:
+                            result = {"text": result}
+                    else:
+                        raise ValueError("Unable to extract response content")
+            
+            # If we have a response model, validate the result
+            if response_model:
+                return response_model(**result)
+            return result
 
         except Exception as e:
             logger.error(f"Content analysis error: {e}", exc_info=True)
