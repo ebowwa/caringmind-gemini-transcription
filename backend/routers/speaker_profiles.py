@@ -33,7 +33,6 @@ class SpeakerProfileResponse(BaseModel):
     confidence_reasoning: str
     psychoanalysis: str
     location_background: str
-    voice_characteristics: dict
     profile_created: bool = False
 
 # Add request model to match iOS client
@@ -57,9 +56,15 @@ class AnalysisType(str, Enum):
 ANALYSIS_SCHEMAS = {
     AnalysisType.NAME: content.Schema(
         type=content.Type.OBJECT,
-        required=["name", "prosody", "feeling", "confidence_score", 
-                 "confidence_reasoning", "psychoanalysis", 
-                 "location_background", "voice_characteristics"],
+        required=[
+            "name", 
+            "prosody", 
+            "feeling", 
+            "confidence_score",
+            "confidence_reasoning", 
+            "psychoanalysis",
+            "location_background"
+        ],
         properties={
             "name": content.Schema(type=content.Type.STRING, description="The user's full name."),
             "prosody": content.Schema(type=content.Type.STRING, description="Speech analysis."),
@@ -68,20 +73,6 @@ ANALYSIS_SCHEMAS = {
             "confidence_reasoning": content.Schema(type=content.Type.STRING, description="Reasoning."),
             "psychoanalysis": content.Schema(type=content.Type.STRING, description="Psychological insights."),
             "location_background": content.Schema(type=content.Type.STRING, description="Environment details."),
-            "voice_characteristics": content.Schema(
-                type=content.Type.OBJECT,
-                description="Voice profile characteristics",
-                required=["pattern", "style", "common_phrases"],
-                properties={
-                    "pattern": content.Schema(type=content.Type.STRING, description="Distinctive voice pattern features"),
-                    "style": content.Schema(type=content.Type.STRING, description="Speaking style characteristics"),
-                    "common_phrases": content.Schema(
-                        type=content.Type.ARRAY,
-                        description="Detected common phrases or speech patterns",
-                        items=content.Schema(type=content.Type.STRING)
-                    )
-                }
-            )
         }
     ),
     AnalysisType.TRANSCRIPTION: content.Schema(
