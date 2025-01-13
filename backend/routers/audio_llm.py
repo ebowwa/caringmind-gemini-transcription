@@ -2,13 +2,18 @@ import os
 import logging
 import json
 import base64
+import binascii
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 import google.generativeai as genai
 from google.ai.generativelanguage_v1beta.types import content
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from datetime import datetime
 from services.audio_upload import AudioUploadService
 from services.audio_validation import AudioValidator  # Add this import
+from services.gemini_service import GeminiService
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -16,188 +21,162 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-# Configure Gemini
-api_key = os.getenv("GOOGLE_API_KEY")
-if not api_key:
-    raise ValueError("GOOGLE_API_KEY environment variable not set")
-genai.configure(api_key=api_key)
+# Base models for extensibility
+class BaseAnalysis(BaseModel):
+    timestamp: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    metadata: Optional[dict] = Field(default_factory=dict)
 
-# Schema definitions
-class ToneAnalysis(BaseModel):
+class BaseRequest(BaseModel):
+    user_id: Optional[str] = None
+    session_id: Optional[str] = None
+    request_metadata: Optional[dict] = Field(default_factory=dict)
+
+class ToneAnalysis(BaseAnalysis):
     tone: str
     indicators: list[str]
+    confidence_score: Optional[float] = None
+    additional_metrics: Optional[dict] = None
 
-class ConversationTurn(BaseModel):
-    diarization_html: str
-    transcription_html: str
-    timestamps_html: str
-    tone_analysis: ToneAnalysis
-    confidence: float
-    summary: str
+class ConversationTurn(BaseAnalysis):
+    diarization_html: Optional[str] = None
+    transcription_html: Optional[str] = None
+    timestamps_html: Optional[str] = None
+    tone_analysis: Optional[ToneAnalysis] = None
+    confidence: Optional[float] = None
+    summary: Optional[str] = None
+    raw_data: Optional[dict] = None
+    segments: Optional[list[dict]] = None
 
 class TranscriptionResponse(BaseModel):
     full_audio_transcribed: bool
     conversation_analysis: list[ConversationTurn]
+    metadata: Optional[dict] = None
+    processing_stats: Optional[dict] = None
 
-class AudioRequest(BaseModel):
+class AudioRequest(BaseRequest):
     audio_base64: str
+    audio_format: Optional[str] = None
+    processing_options: Optional[dict] = None
 
 class UploadResponse(BaseModel):
     file_id: Optional[str] = None
     size: int
     is_valid: bool
     analysis: Optional[TranscriptionResponse] = None
+    upload_metadata: Optional[dict] = None
 
-class AnalysisRequest(BaseModel):
+class AnalysisRequest(BaseRequest):
     file_id: str
+    analysis_options: Optional[dict] = None
 
-# Create the model configuration
-generation_config = {
-    "temperature": 1,
-    "top_p": 0.95,
-    "top_k": 40,
-    "max_output_tokens": 8192,
-    "response_schema": content.Schema(
+def create_transcription_schema():
+    """Create schema for transcription response"""
+    return content.Schema(
         type=content.Type.OBJECT,
-        enum=[],
         required=["full_audio_transcribed", "conversation_analysis"],
         properties={
             "full_audio_transcribed": content.Schema(
                 type=content.Type.BOOLEAN,
-                description="Indicates if the entire audio file has been transcribed.",
+                description="Indicates if the entire audio was successfully transcribed"
             ),
             "conversation_analysis": content.Schema(
                 type=content.Type.ARRAY,
-                description="List of analyzed turns in the conversation.",
+                description="List of analyzed conversation turns",
                 items=content.Schema(
                     type=content.Type.OBJECT,
-                    enum=[],
-                    required=["diarization_html", "transcription_html", "timestamps_html", "tone_analysis", "confidence", "summary"],
+                    required=[
+                        "diarization_html",
+                        "transcription_html",
+                        "timestamps_html",
+                        "tone_analysis",
+                        "confidence",
+                        "summary"
+                    ],
                     properties={
                         "diarization_html": content.Schema(
                             type=content.Type.STRING,
-                            description="HTML structure indicating the speaker label.",
+                            description="Speaker identification in HTML format"
                         ),
                         "transcription_html": content.Schema(
                             type=content.Type.STRING,
-                            description="HTML structure for the verbatim transcription.",
+                            description="Transcribed text in HTML format"
                         ),
                         "timestamps_html": content.Schema(
                             type=content.Type.STRING,
-                            description="HTML structure indicating approximate time range.",
+                            description="Timestamp markers in HTML format"
                         ),
                         "tone_analysis": content.Schema(
                             type=content.Type.OBJECT,
-                            description="Analysis of the speaker's tone.",
-                            enum=[],
                             required=["tone", "indicators"],
                             properties={
                                 "tone": content.Schema(
                                     type=content.Type.STRING,
-                                    description="The dominant tone identified.",
+                                    description="Identified emotional tone"
                                 ),
                                 "indicators": content.Schema(
                                     type=content.Type.ARRAY,
-                                    description="Supporting details for the identified tone.",
-                                    items=content.Schema(
-                                        type=content.Type.STRING,
-                                        description="A specific indicator of the tone.",
-                                    ),
-                                ),
-                            },
+                                    items=content.Schema(type=content.Type.STRING),
+                                    description="Evidence supporting tone analysis"
+                                )
+                            }
                         ),
                         "confidence": content.Schema(
                             type=content.Type.NUMBER,
-                            description="Confidence score for the tone detection.",
+                            description="Confidence score for the analysis"
                         ),
                         "summary": content.Schema(
                             type=content.Type.STRING,
-                            description="Concise summary of the speaker's contribution.",
-                        ),
-                    },
-                ),
-            ),
-        },
-    ),
-    "response_mime_type": "application/json",
-}
+                            description="Brief summary of the conversation turn"
+                        )
+                    }
+                )
+            )
+        }
+    )
 
-@router.post("/upload", response_model=TranscriptionResponse)  # Changed response model
+@router.post("/upload")
 async def upload_audio(request: AudioRequest):
-    """Handle file upload and analysis"""
+    """Handle file upload and analysis with context"""
     try:
+        # Handle potential binary data
+        if isinstance(request.audio_base64, bytes):
+            try:
+                request.audio_base64 = request.audio_base64.decode('utf-8')
+            except UnicodeDecodeError:
+                request.audio_base64 = base64.b64encode(request.audio_base64).decode('utf-8')
+
+        # Process upload
         file_id, size, is_valid, speech_ratio = await AudioUploadService.process_upload(request.audio_base64)
         
         if not is_valid:
-            # Return empty but valid response structure for invalid audio
             return TranscriptionResponse(
                 full_audio_transcribed=False,
                 conversation_analysis=[]
             )
 
-        # Only analyze valid audio
         file_path = AudioUploadService.get_audio_path(file_id)
         with open(file_path, "rb") as f:
-            audio_base64 = base64.b64encode(f.read()).decode()
+            audio_data = f.read()
 
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash-exp",
-            generation_config=generation_config
+        gemini_service = GeminiService()
+        transcription_prompt = """
+        Please transcribe and analyze this audio clip. For each speaker turn:
+        1. Identify the speaker
+        2. Transcribe their exact words
+        3. Note the approximate timestamp
+        4. Analyze their tone
+        5. Provide a brief summary
+        
+        Format using HTML tags as specified in the schema.
+        Focus on accuracy and clarity.
+        """
+
+        return await gemini_service.analyze_audio(
+            audio_data=audio_data,
+            prompt=transcription_prompt,
+            schema=create_transcription_schema()
         )
 
-        logger.info("Starting chat session...")
-        try:
-            chat = model.start_chat(history=[
-                {
-                    "role": "user",
-                    "parts": [{
-                        "inline_data": {
-                            "mime_type": "audio/wav",  # Changed from ogg to wav
-                            "data": audio_base64
-                        }
-                    },
-                    """Please transcribe only what is actually spoken in this audio clip. 
-                    Do not invent or assume additional dialogue.
-                    If you hear a single speaker, return just one analysis.
-                    Format the output as follows:
-                    - Diarization: Use <h1> for actual speaker detection
-                    - Transcription: Use <p> for exact words spoken
-                    - Timestamps: Use <h2> for time ranges detected
-                    - Tone: Only analyze the actual tone present
-                    
-                    Return a JSON object with full_audio_transcribed boolean and conversation_analysis array.
-                    If unsure about any part, indicate lower confidence scores."""
-                    ]
-                }
-            ])
-            logger.info("Chat session started successfully")
-        except Exception as e:
-            logger.error(f"Chat session error: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Chat session failed: {str(e)}")
-
-        logger.info("Sending message to get analysis...")
-        try:
-            response = chat.send_message("Please analyze the audio file")
-            logger.info("Received response from Gemini")
-            logger.debug(f"Raw response: {response.text}")
-            
-            response_text = response.text
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0].strip()
-            
-            # Return raw response to match client expectations
-            return json.loads(response_text)
-
-        except Exception as e:
-            logger.error(f"Analysis error: {str(e)}", exc_info=True)
-            # Return empty response for failed analysis
-            return TranscriptionResponse(
-                full_audio_transcribed=False,
-                conversation_analysis=[]
-            )
-
     except Exception as e:
-        logger.error(f"Upload error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=400, detail=str(e))
-
-# Remove separate analyze endpoint since we do it inline
+        logger.error(f"Upload error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

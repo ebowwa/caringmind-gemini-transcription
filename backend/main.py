@@ -1,7 +1,12 @@
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from routers import audio_llm
+from routers import audio_llm, speaker_profiles
+from fastapi import Request
+from fastapi.responses import RedirectResponse
+from typing import Optional
+from fastapi.requests import Request
+import json
 
 # Configure logging
 logging.basicConfig(
@@ -12,27 +17,25 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Enable CORS with specific ngrok domain
+# Update CORS config for iOS client
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "https://localhost:3000",
         "https://*.ngrok-free.app",
-        "*"  # Be cautious with this in production
+        "https://*.ts.net",  # Allow Tailscale domains
+        "*"
     ],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization"],
     expose_headers=["*"]
 )
 
-# Include routers with tags
-app.include_router(
-    audio_llm.router,
-    prefix="/api/v1",
-    tags=["audio-processing"]
-)
+# Include routers - remove all prefixes
+app.include_router(audio_llm.router, prefix="/api/v1")
+app.include_router(speaker_profiles.router)
 
 @app.get("/health")
 async def health_check():
