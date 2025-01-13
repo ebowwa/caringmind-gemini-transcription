@@ -148,8 +148,25 @@ class NameAnalysisService:
 
             response = chat.send_message("Process the audio and think deeply")
             
-            # Create NameAnalysis object for validation
-            return NameAnalysis(**response.text)
+            # Parse the response text as JSON before creating NameAnalysis object
+            try:
+                import json
+                import re
+                
+                # Extract JSON from markdown code block if present
+                json_pattern = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
+                match = json_pattern.search(response.text)
+                if match:
+                    json_str = match.group(1)
+                    result = json.loads(json_str)
+                else:
+                    # Try parsing the entire response as JSON
+                    result = json.loads(response.text)
+                
+                return NameAnalysis(**result)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse Gemini response as JSON: {e}\nResponse text: {response.text}")
+                raise ValueError(f"Invalid response format from Gemini: {str(e)}")
 
         except Exception as e:
             logger.error(f"Name analysis error: {e}", exc_info=True)
