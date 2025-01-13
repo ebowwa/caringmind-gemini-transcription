@@ -46,7 +46,8 @@ class NameAnalysisService:
             top_p=0.95,
             top_k=64,
             max_output_tokens=8192,
-            model_name="gemini-1.5-flash"
+            model_name="gemini-1.5-flash",
+            response_schema=self._create_name_analysis_schema()
         )
         self.gemini_service = GeminiService(config=config)
 
@@ -133,7 +134,7 @@ class NameAnalysisService:
             result = await self.gemini_service.analyze_content(
                 content_data=audio_data,
                 prompt=analysis_prompt,
-                schema=self._create_name_analysis_schema(),
+                response_model=NameAnalysis,
                 mime_type=self.SUPPORTED_MIME_TYPES[mime_type]
             )
 
