@@ -6,8 +6,8 @@ from .name_analysis import NameAnalysis, NameAnalysisService
 logger = logging.getLogger(__name__)
 
 class SpeakerCharacteristics(BaseModel):
-    voice_pattern: str
-    common_phrases: List[str]
+    prosody: str
+    feeling: str
     speech_style: str
     role: str
     relationship: Optional[str] = "self"  # self, family, friend
@@ -18,6 +18,10 @@ class SpeakerProfile(BaseModel):
     name: str
     characteristics: SpeakerCharacteristics
     voice_samples: List[str]  # Base64 encoded audio samples
+    confidence_score: int
+    confidence_reasoning: str
+    psychoanalysis: str
+    location_background: str
 
 class SpeakerProfileService:
     def __init__(self):
@@ -39,10 +43,10 @@ class SpeakerProfileService:
         return f"""
         Speaker context:
         - Name: {profile.name}
-        - Voice pattern: {profile.characteristics.voice_pattern}
+        - Prosody: {profile.characteristics.prosody}
         - Speech style: {profile.characteristics.speech_style}
         - Role: {profile.characteristics.role}
-        - Common phrases: {', '.join(profile.characteristics.common_phrases)}
+        - Feeling: {profile.characteristics.feeling}
         """
     
     async def get_related_profiles(self, user_id: str) -> List[SpeakerProfile]:
@@ -82,12 +86,16 @@ class SpeakerProfileService:
                 user_id=user_id,
                 name=analysis.name,
                 characteristics=SpeakerCharacteristics(
-                    voice_pattern=analysis.voice_characteristics.pattern,
-                    speech_style=analysis.voice_characteristics.style,
-                    common_phrases=analysis.voice_characteristics.common_phrases,
+                    prosody=analysis.prosody,
+                    feeling=analysis.feeling,
+                    speech_style=analysis.prosody,  # Use prosody as speech style
                     role=relationship
                 ),
-                voice_samples=[audio_data]  # Store the base64 audio
+                voice_samples=[audio_data],  # Store the base64 audio
+                confidence_score=analysis.confidence_score,
+                confidence_reasoning=analysis.confidence_reasoning,
+                psychoanalysis=analysis.psychoanalysis,
+                location_background=analysis.location_background
             )
             
             # Store the profile

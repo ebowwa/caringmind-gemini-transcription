@@ -45,7 +45,7 @@ class NameAnalysisService:
                 type=content.Type.OBJECT,
                 required=[
                     "name",
-                    "prosody",
+                    "prosody", 
                     "feeling",
                     "confidence_score",
                     "confidence_reasoning",
