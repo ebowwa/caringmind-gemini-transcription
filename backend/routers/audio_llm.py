@@ -68,7 +68,7 @@ class UploadResponse(BaseModel):
 class AnalysisRequest(BaseRequest):
     file_id: str
     analysis_options: Optional[dict] = None
-
+# we will be using many different schemas and prompts so we need this more reusable
 def create_transcription_schema():
     """Create schema for transcription response"""
     return content.Schema(
