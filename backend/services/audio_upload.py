@@ -5,7 +5,7 @@ import uuid
 import os
 from typing import Tuple, Union
 from pathlib import Path
-from services.audio_validation import AudioValidator
+from services.audio_validation import AudioValidator # validates if speech is present
 import subprocess
 
 logger = logging.getLogger(__name__)

@@ -7,6 +7,10 @@ from fastapi.responses import RedirectResponse
 from typing import Optional
 from fastapi.requests import Request
 import json
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(dotenv_path=".env")  # Adjust the path to point to your .env file
 
 # Configure logging
 logging.basicConfig(
